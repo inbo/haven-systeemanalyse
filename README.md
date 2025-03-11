@@ -1,5 +1,2 @@
 # Haven systeemanalyse
 
-Oberon
-
-beschrijving ...
