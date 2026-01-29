@@ -18,10 +18,9 @@ null_variable <- function(variable) {
 
 create_path <- function(path, subfolder) {
   # old name = CreatePath
-  new_path <- str_c(path, subfolder, sep = "/")
+  new_path <- stringr::str_c(path, subfolder, sep = "/")
   if (!file.exists(new_path)) {
     dir.create(new_path)
   }
   return(new_path)
 }
-write_checklist(check_project())
