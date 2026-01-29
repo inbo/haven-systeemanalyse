@@ -24,3 +24,4 @@ create_path <- function(path, subfolder) {
   }
   return(new_path)
 }
+write_checklist(check_project())

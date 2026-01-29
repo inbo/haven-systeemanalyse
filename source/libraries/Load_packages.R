@@ -2,7 +2,7 @@
 # Add new packages here if necessary.
 # The code will download new ones and load everything.
 all_packages <- c(
-  # General
+                  # General
   "DBI", "conflicted", "units", "checklist",
   # INBO-packages
   "watina", "inbodb", "inbolims", "INBOtheme",
@@ -10,7 +10,7 @@ all_packages <- c(
   "tidyverse", "glue", "lubridate", "santoku",
   # Spatial data
   "sf", "terra",
-  # Visualisation
+  # Visualization
   "ggforce", "patchwork", "tidyterra", "ggspatial", "ggnewscale",
   "ggsflabel", "maptiles", "scales",
   # external
@@ -30,7 +30,4 @@ conflicts_prefer(readxl::read_xlsx)
 conflicts_prefer(glue::trim)
 conflicts_prefer(ggplot2::geom_sf_label)
 conflicts_prefer(readxl::read_xlsx)
-
-check_spelling()
-check_filename()
 check_lintr()
