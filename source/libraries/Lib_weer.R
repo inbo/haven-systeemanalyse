@@ -27,29 +27,26 @@ opmaak_graf <- function(graf, grid = TRUE, x_jaar = FALSE) {
   return(graf)
 }
 
-
-klimaatsamenvattingPerDagISOWEEK <- function(data_weer, datum_start, datum_einde, NA_rm = TRUE) {
-  
-  
+klimaatsamenvatting_perdag_isoweek <- function(data_weer, datum_start, datum_einde, NA_rm = TRUE) {
   # Neem de volledige week mee waarin het start- als einddatum invalt.
-  # Dit zorgt ervoor dat de aantal halve maanden afwisselt per jaar. 
-  # Bereken Tmin, Tmax, Tgem, Wgem, Ntot per dag voor een opgegeven periode
+  # Dit zorgt ervoor dat de aantal halve maanden afwisselt per jaar.
+  # Bereken Tmin, Tmax, Tgem, Wgem, Ntot per dag voor een opgegeven periode.
   
-  start_datum <- datum_start %>% 
+  start_datum <- datum_start %>%
     as.Date(., format = "%d/%m/%Y")
   
-  einde_datum <- datum_einde %>% 
+  einde_datum <- datum_einde %>%
     as.Date(., format = "%d/%m/%Y")
   
   # Add weeks
-  data_weer_week <- data_weer %>% 
-    mutate(Week = isoweek(DatumTijd),
-           Datum = as_date(DatumTijd)) %>% 
+  data_weer_week <- data_weer %>%
+    mutate(Week = isoweek(.data$DatumTijd),
+           Datum = as_date(.data$DatumTijd)) %>%
     filter(
       (Jaar ==  year(start_datum) & Week == isoweek(start_datum)) | 
         (Jaar ==  year(einde_datum) & Week == isoweek(einde_datum))
     ) %>% 
-    distinct(DatumTijd, Datum, Dag, Maand, Jaar)
+    distinct(.data$DatumTijd, .data$Datum, .data$Dag, .data$Maand, .data$Jaar)
   
   
   # Get the first date of the week wherein the startdate falls
