@@ -1,28 +1,30 @@
-RuimteRondGrafiek <- 0.5 #cm
-LetterGrootte <- 9
+ruimte_rond_grafiek <- 0.5 #cm
+letter_grootte <- 9
 
-Opmaak.Graf <- function(Graf, Grid = TRUE, X.Jaar = FALSE) {
-  Graf <- Graf + 
+opmaak_graf <- function(graf, grid = TRUE, x_jaar = FALSE) {
+  graf <- graf +
     theme(panel.background = element_rect(fill = "white"))
-  if (Grid) {
-    Graf <- Graf + 
+  
+  if (grid) {
+    graf <- graf +
       theme(panel.grid = element_line(color = "grey90"))
   } else {
-    Graf <- Graf + 
-      theme(panel.grid = element_blank()) 
+    graf <- graf +
+      theme(panel.grid = element_blank())
   }
-  Graf <- Graf + 
-    theme(axis.line = element_line(color = Kleur2)) + 
-    theme(axis.ticks = element_line(color = Kleur2)) + 
-    theme(axis.text = element_text(color = Kleur2, size = LetterGrootte)) +
-    theme(axis.title.y = element_text(color = Kleur2, size = LetterGrootte)) +
+  
+  graf <- graf + 
+    theme(axis.line = element_line(color = Kleur2)) +
+    theme(axis.ticks = element_line(color = Kleur2)) +
+    theme(axis.text = element_text(color = Kleur2, size = letter_grootte)) +
+    theme(axis.title.y = element_text(color = Kleur2, size = letter_grootte)) +
     theme(axis.title = element_text(color = Kleur2))
   
-  if (X.Jaar) {
-    Graf <- Graf + 
+  if (x_jaar) {
+    graf <- graf + 
       scale_x_continuous(breaks = c(2003,2005,2007,2009,2011,2013,2015,2017,2019))
   }
-  Graf
+  return(graf)
 }
 
 
