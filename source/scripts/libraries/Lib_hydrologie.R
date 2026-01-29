@@ -89,9 +89,6 @@ watina <- connect_inbo_dbase(database_name = "D0025_00_Watina")  # Open data-set
 watina_havens_peilpuntinfo <- GetWatinaPeilpunten(watina, c("AHR", "WAH"))
 dbDisconnect(watina)  # close dataset
 
-neerslagoverschot_gegevens_df <- readxl::read_xlsx("Data/Gegevens/NeerslagOverschot.xlsx", na = "") %>% 
-  #  Warning that there is missing value in the data. Silence the warning.
-  suppressWarnings()
 
 # kwelpunten <- readxl::read_xlsx("Data/Gegevens/Kwelpunten.xlsx", na = "")
 
@@ -161,6 +158,19 @@ AdaptTijdreeks <- function(tijdreeks, ingegeven = FALSE) {
 }
 
 
+PeilpuntMaaiveld <- function(tijdreeks, gebiedsgroep = c("WAH")) {
+  
+  watina <- connect_inbo_dbase(database_name = "D0025_00_Watina")  # Open data-set
+  watina_havens_peilpuntinfo <- GetWatinaPeilpunten(watina, gebiedsgroep) %>% 
+    dplyr::select(MeetpuntCode, PeilpuntCode, PeilpuntTAWNulpunt, PeilpuntTAWMaaiveld, PeilpuntStartdatum, PeilpuntEinddatum)
+  dbDisconnect(watina)  # close dataset
+  
+  
+  tijdreeks_maaiveld <- tijdreeks %>% 
+    left_join(watina_havens_peilpuntinfo, by = c("MeetpuntCode", "PeilpuntCode"))
+  
+  return(tijdreeks_maaiveld)
+}
 
 KiesMeetMethode <- function(tijdreeks, TAW = TRUE, PeilpuntTAWMaaiveld = NULL) {
   # Keuze welke waarde gebruikt wordt. Bij default is dit TAW (TRUE). 
@@ -2177,6 +2187,7 @@ DataKwelpunt <- function(kwelpunten,  # Vector voor de meetpunten die vergeleken
                          aangepaste_periode = FALSE,
                          periode_begin = "01-01",  
                          periode_einde = "01-08",
+                         jaren = NULL,
                          controle = FALSE, # conteroleer op kwaliteit:
                          percent_decimal = 0.8, # kwantieti van de metingen voor aangepaste periode
                          min_aantal_metingen = 20, # kwantiteit voor hydrologisch jaar
@@ -2264,26 +2275,26 @@ DataKwelpunt <- function(kwelpunten,  # Vector voor de meetpunten die vergeleken
         reframe(PeilpuntTAWMaaiveld = PeilpuntTAWMaaiveld)
       
       return(peilpunt_info_missend)
-    }
+      }
     gegevens_kwelpunt <- gegevens_kwelpunt %>% 
       KiesMeetMethode(TAW = !maaiveld, PeilpuntTAWMaaiveld = PeilpuntTAWMaaiveld)
-    
+    }
+  
+  if(!is.null(jaren)) {
+    gegevens_kwelpunt <- gegevens_kwelpunt %>% 
+      filter(Jaar %in% jaren)
   }
   
-  if (common_year) {
+  if (common_year & nrow(gegevens_kwelpunt) != 0) {
     
     gegevens_kwelpunt <- gegevens_kwelpunt %>% 
       CommonYearsKwel(., aangepaste_periode = aangepaste_periode)
   }
+  
 
+  
   return(gegevens_kwelpunt)
 }
-
-
-
-
-
-
 
 
 DataOpbolling <- function(PeilbuisCode, PeilSchaalCode, 
@@ -2386,11 +2397,871 @@ GemiddeldZomerpeil <- function(tijdreeks, periode_begin = "15-07", periode_einde
     summarise(gemiddelde = mean(PeilmetingTAW, na.rm = TRUE)) %>% 
     pull()
   
+  if (is.na(gemiddelde)) {
+    
+    gemiddelde <- NULL
+  }
+  
+  
  return(gemiddelde)   
 }
 
 
 # Grafieken ------
+
+# GrafiekPeilverloop <- function(tijdreeks_peilverloop, 
+#                                aangepaste_periode = FALSE,
+#                                periode_begin = "01-01", periode_einde = "31-12",
+#                                jaren = NULL, facet = FALSE,
+#                                maaiveld = FALSE, label = TRUE,
+#                                titel = "Peil") {
+#   # get the timeseries in graphs for the differenct years. This function only creates the graphs. The data is from getPeilverloop() !
+#   # Uses facet_wrap. It always statrts from the first month for each year so all the scales the x-axes are starting from te same (was quitte hard to figure this out).
+#   # aangepaste_periode is FALSE
+#   # periode_begin en einde enkel voor aangepaste periode zodat scale en label enkel die maanden weergeeft.
+#   # maaiveld, only needed to get correct y-axis label.
+#   # Jaar dient opgenomen te worden in GetPeilverloop() !
+#   # label = TRUE, if water was below watertable for a certain observation, this observation gets a point-label in the graph.
+#   
+#   # if all years
+#   jaar_label <- "6 month"
+#   # Periode opbolling
+#   if (!is.null(jaren)) {
+#     jaar_label <- "2 month"
+#     if (!aangepaste_periode) {
+#       tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+#         filter(.data$HydrologischJaar %in% jaren)
+#     } else {
+#       tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+#         filter(.data$Jaar %in% jaren)
+#     }
+#   }
+#   
+#   if (facet) {
+#     
+#     if (aangepaste_periode) {
+#       
+#       G <- ggplot(data = tijdreeks_peilverloop) +
+#         geom_line(aes(x = Periode, y = PeilmetingTAW,  col  = MeetpuntCode)) +
+#         facet_row(~ Jaar, scales = "free_x") +
+#         scale_x_date(
+#           date_labels = "%b",
+#           breaks = seq(as.Date(str_c("2020", "-" , periode_begin), format = "%Y-%d-%m"),
+#                        as.Date(str_c("2021", "-", periode_einde), format = "%Y-%d-%m"),
+#                        by = "2 months"),
+#           limits = as.Date(c(
+#             str_c("2020", "-", periode_begin), 
+#             str_c("2020", "-", periode_einde)), format = "%Y-%d-%m"),
+#           date_minor_breaks = "1 month")
+#       
+#     } else {
+#       # Hydrologisch jaar
+#       ## Hier moet periode ook van 2019 en 2020 zijn zoals berekend in GetPeilverloop().
+#       ## Dit omdat de labels niet deftig geplaats kunnen worden gezien als je 1 jaar neemt (bvb 2020), gaat R automatisch uit van een logische volgorde.
+#       ## Dus maart na april lukt niet gezien onlogisch. De stalen van april tot decemebr zijn in 2019 (geen schrikeljaar), 
+#       ## en januari tot maart in 2020 (wel schrikeljaar zodat een observatie op 29/02 wel mogelijk is.)
+#       
+#       G <- ggplot(data = tijdreeks_peilverloop) +
+#         geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+#         facet_row(~ HydrologischJaar, scales = "free_x") +
+#         scale_x_date(
+#           date_labels = "%b",
+#           breaks = seq(as.Date(str_c("2019", "-" , "01-04"), format = "%Y-%d-%m"),
+#                        as.Date(str_c("2020", "-", "31-12"), format = "%Y-%d-%m"),
+#                        by = "2 month"),
+#           limits = c(as.Date(str_c(2019, "-", "04", "-01")), as.Date(str_c(2020, "-", "03-31"))),
+#           date_minor_breaks = "1 month")
+#     }
+#     
+#     # Add point label if observation is NA due below watertable.
+#     if (label) {
+#       G <- G +
+#         geom_label(aes(label = Label, x = Periode, y = min(PeilmetingTAW, na.rm = TRUE)),
+#                    fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+#     }
+#     # Geen facet
+#   } else {
+#     
+#     #Geef het laatste jaar een andere kleur. 
+#     if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+#       laatste_jaar <- if_else(aangepaste_periode, max(tijdreeks_peilverloop$Jaar), max(tijdreeks_peilverloop$HydrologischJaar))
+#       tijdreeks_peilverloop_historisch <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+#           filter(Jaar != laatste_jaar)} else {tijdreeks_peilverloop %>% 
+#               filter(HydrologischJaar != laatste_jaar)}
+#       tijdreeks_peilverloop_recent <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+#           filter(Jaar == laatste_jaar)} else {tijdreeks_peilverloop %>% 
+#               filter(HydrologischJaar == laatste_jaar)}
+#       
+#       G <- ggplot() +
+#         geom_line(data = tijdreeks_peilverloop_historisch, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = inbo_donkerblauw) +
+#         geom_line(data = tijdreeks_peilverloop_recent, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = inbo_felrood)
+#     } else {
+#       
+#       G <- ggplot() +
+#         geom_line(data = tijdreeks_peilverloop, aes(x = PeilmetingDatum, y = PeilmetingTAW,
+#                                                     col = MeetpuntCode))
+#     }
+#     
+#     if (aangepaste_periode) {
+#       G <- G +
+#         scale_x_date(date_labels = "%m-%Y", 
+#                      limits = c(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+#                                 as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m")),
+#                      breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+#                                   as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m"),
+#                                   by = jaar_label),
+#                      date_minor_breaks =  "1 month")
+#     } else {
+#       
+#       G <- G +
+#         scale_x_date(date_labels = "%m-%Y", 
+#                      limits = c(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+#                                 as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+#                                                + 1
+#                                               , "-", "01-04"), format = "%Y-%d-%m")),
+#                      breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+#                                   as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+#                                                  + 1
+#                                                 , "-", "01-04"), format = "%Y-%d-%m"),
+#                                   by = jaar_label),
+#                      date_minor_breaks =  "1 month")
+#         
+#     }
+#     
+#     if (label) {
+#       G <- G +
+#         geom_label(data = tijdreeks_peilverloop, aes(label = Label, x = PeilmetingDatum, y = min(PeilmetingTAW, na.rm = TRUE) + 0.01),
+#                    fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+#     }
+#   }
+#   
+#   # If only one Meetpuntcode, remove the legend
+#   if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+#     G <- G + 
+#       theme(legend.position = "none")
+#   }
+#   
+#   G <- G +
+#     labs(x = "") +
+#     scale_y_continuous(limits = c(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+#                                   max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE)),
+#                        breaks = seq(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+#                                     max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE),
+#                                     by = 0.2),
+#                        minor_breaks = waiver())
+#   
+#   # Add correct Y-axis label  
+#   if (maaiveld) {
+#     G <- G + 
+#       labs(y = "peil (m t.o.v. maaiveld)", x = "") 
+#   } else {
+#     G <- G + 
+#       labs(y = "Peil (mTAW)", x = "") 
+#     
+#   }
+#   
+#   meetpunt <-  tijdreeks_peilverloop %>% distinct(MeetpuntCode) %>% pull()
+#   droogval <- any(!is.na(tijdreeks_peilverloop$Label) & tijdreeks_peilverloop$Label == "x")
+#   
+#   
+#   Onderschrift <- OnderschriftPeil(meetpunt, aangepaste_periode = aangepaste_periode,
+#                                    periode_begin = periode_begin, periode_einde = periode_einde,
+#                                    droogval, titel = titel)
+#   
+#   
+#   return(list(Graf = G, Bijschrift = Onderschrift))
+# }
+
+
+GrafiekPeilverloop <- function(tijdreeks_peilverloop, 
+                               werkjaar = NULL, 
+                               aangepaste_periode = FALSE,
+                               periode_begin = "01-01", periode_einde = "31-12",
+                               jaren = NULL, facet = FALSE,
+                               maaiveld = FALSE,
+                               watina_peilpuntinfo = watina_havens_peilpuntinfo,
+                               color_peil_historisch = Kleur1, color_peil_recent = Kleur9,
+                               color_maaiveld = Kleur11,
+                               x_label_month = 6, 
+                               y_maaiveld = FALSE, label = TRUE,
+                               peilpuntcode = TRUE, 
+                               titel_bijschrift = "Peil") {
+  # get the timeseries in graphs for the differenct years. This function only creates the graphs. The data is from getPeilverloop() !
+  # Uses facet_wrap. It always statrts from the first month for each year so all the scales the x-axes are starting from te same (was quitte hard to figure this out).
+  # aangepaste_periode is FALSE
+  # periode_begin en einde enkel voor aangepaste periode zodat scale en label enkel die maanden weergeeft.
+  # maaiveld, only needed to get correct y-axis label.
+  # Jaar dient opgenomen te worden in GetPeilverloop() !
+  # label = TRUE, if water was below watertable for a certain observation, this observation gets a point-label in the graph.
+  
+  # if all years
+  jaar_label <- str_c(x_label_month, "month", sep = " ")
+  # Periode opbolling
+  if (!is.null(jaren)) {
+    jaar_label <- "2 month"
+    if (!aangepaste_periode) {
+      tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+        filter(.data$HydrologischJaar %in% jaren)
+    } else {
+      tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+        filter(.data$Jaar %in% jaren)
+    }
+  }
+  
+  if (nrow(tijdreeks_peilverloop) == 0) {
+    return(list(Graf = NULL, Bijschrift = "Geen data beschikbaar."))
+  }
+  
+  
+  if (facet) {
+    
+    if (aangepaste_periode) {
+      
+      G <- ggplot(data = tijdreeks_peilverloop) +
+        geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+        scale_color_manual(values = c(color_peil_historisch)) +
+        facet_row(~ Jaar, scales = "free_x") +
+        scale_x_date(
+          date_labels = "%b",
+          breaks = seq(as.Date(str_c("2020", "-" , periode_begin), format = "%Y-%d-%m"),
+                       as.Date(str_c("2021", "-", periode_einde), format = "%Y-%d-%m"),
+                       by = "2 months"),
+          limits = as.Date(c(
+            str_c("2020", "-", periode_begin), 
+            str_c("2020", "-", periode_einde)), format = "%Y-%d-%m"),
+          date_minor_breaks = "1 month")
+      
+    } else {
+      # Hydrologisch jaar
+      ## Hier moet periode ook van 2019 en 2020 zijn zoals berekend in GetPeilverloop().
+      ## Dit omdat de labels niet deftig geplaats kunnen worden gezien als je 1 jaar neemt (bvb 2020), gaat R automatisch uit van een logische volgorde.
+      ## Dus maart na april lukt niet gezien onlogisch. De stalen van april tot decemebr zijn in 2019 (geen schrikeljaar), 
+      ## en januari tot maart in 2020 (wel schrikeljaar zodat een observatie op 29/02 wel mogelijk is.)
+      
+      G <- ggplot(data = tijdreeks_peilverloop) +
+        geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+        scale_color_manual(values = c(color_peil_historisch)) +
+        facet_row(~ HydrologischJaar, scales = "free_x") +
+        scale_x_date(
+          date_labels = "%b",
+          breaks = seq(as.Date(str_c("2019", "-" , "01-04"), format = "%Y-%d-%m"),
+                       as.Date(str_c("2020", "-", "31-12"), format = "%Y-%d-%m"),
+                       by = "2 month"),
+          limits = c(as.Date(str_c(2019, "-", "04", "-01")), as.Date(str_c(2020, "-", "03-31"))),
+          date_minor_breaks = "1 month")
+    }
+    
+    # Add point label if observation is NA due below watertable.
+    if (label) {
+      G <- G +
+        geom_label(aes(label = Label, x = Periode, y = min(PeilmetingTAW, na.rm = TRUE)),
+                   fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+    }
+    # Geen facet
+  } else {
+    
+    #Geef het laatste jaar een andere kleur. 
+    if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+      
+      if (!is.null(werkjaar)) {
+        laatste_jaar <- werkjaar
+        
+      } else  {
+        laatste_jaar <- if_else(aangepaste_periode, 
+                                max(tijdreeks_peilverloop$Jaar, na.rm = TRUE), 
+                                max(tijdreeks_peilverloop$HydrologischJaar))
+      }
+      
+      tijdreeks_peilverloop_historisch <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+          filter(Jaar != laatste_jaar)} else {tijdreeks_peilverloop %>% 
+              filter(HydrologischJaar != laatste_jaar)}
+      tijdreeks_peilverloop_recent <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+          filter(Jaar == laatste_jaar)} else {tijdreeks_peilverloop %>% 
+              filter(HydrologischJaar == laatste_jaar)}
+      
+      G <- ggplot() +
+        geom_line(data = tijdreeks_peilverloop_historisch, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = color_peil_historisch) +
+        geom_line(data = tijdreeks_peilverloop_recent, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = color_peil_recent)
+    } else {
+      
+      G <- ggplot() +
+        geom_line(data = tijdreeks_peilverloop, aes(x = PeilmetingDatum, y = PeilmetingTAW,
+                                                    col = MeetpuntCode))
+    }
+    
+    if (aangepaste_periode) {
+      G <- G +
+        scale_x_date(date_labels = "%m-%Y", 
+                     limits = c(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+                                as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m")),
+                     breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+                                  as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m"),
+                                  by = jaar_label),
+                     date_minor_breaks =  "1 month")
+    } else {
+      
+      G <- G +
+        scale_x_date(date_labels = "%m-%Y", 
+                     limits = c(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+                                as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+                                               + 1
+                                              , "-", "01-04"), format = "%Y-%d-%m")),
+                     breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+                                  as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+                                                 + 1
+                                                , "-", "01-04"), format = "%Y-%d-%m"),
+                                  by = jaar_label),
+                     date_minor_breaks =  "1 month")
+        
+    }
+    
+    if (label) {
+      G <- G +
+        geom_label(data = tijdreeks_peilverloop, aes(label = Label, x = PeilmetingDatum, y = min(PeilmetingTAW, na.rm = TRUE) + 0.01),
+                   fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+    }
+  }
+  
+  if (maaiveld) {
+    
+    code <- tijdreeks_peilverloop %>% 
+      distinct(MeetpuntCode) %>% 
+      pull()
+    
+    info_peil <- watina_peilpuntinfo %>% 
+      filter(MeetpuntCode == code)
+    
+    if (y_maaiveld) {
+      data_maaiveld <- info_peil %>% 
+        dplyr::select(MeetpuntCode, PeilpuntCode, "Maaiveld" = PeilpuntHoogteBovenMaaiveld,  PeilpuntStartdatum, PeilpuntEinddatum)
+    } else {
+      data_maaiveld <- info_peil %>% 
+        dplyr::select(MeetpuntCode, PeilpuntCode, "Maaiveld" = PeilpuntTAWMaaiveld,  PeilpuntStartdatum, PeilpuntEinddatum)
+    }
+    
+    data_maaiveld <- data_maaiveld %>%
+      pivot_longer(cols = c(PeilpuntStartdatum, PeilpuntEinddatum),
+                   names_to = "Chronologie", values_to = "Datum") %>%
+      # Vervang NA door start/eind van tijdreeks
+      mutate(Datum = case_when(
+        is.na(Datum) & Chronologie == "PeilpuntStartdatum" ~ min(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE),
+        is.na(Datum) & Chronologie == "PeilpuntEinddatum"  ~ max(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE),
+        TRUE ~ Datum
+      )) %>%
+      # ✂ Afkappen aan grenzen
+      mutate(Datum = case_when(
+        Chronologie == "PeilpuntStartdatum" ~ pmax(Datum, min(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE)),
+        Chronologie == "PeilpuntEinddatum"  ~ pmin(Datum, max(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE)),
+        TRUE ~ Datum
+      )) %>%
+
+      # Combineer start/eind per maaiveld — nog steeds in LANG formaat
+      group_by(MeetpuntCode, PeilpuntCode, Maaiveld) %>%
+      summarise(
+        StartDatum = min(Datum[Chronologie == "PeilpuntStartdatum"]),
+        EindDatum  = max(Datum[Chronologie == "PeilpuntEinddatum"]),
+        .groups = "drop"
+      ) %>%
+      filter(StartDatum <= EindDatum) %>% 
+      pivot_longer(cols = c(StartDatum, EindDatum),
+                   names_to = "Chronologie", values_to = "Datum")
+      
+      
+    G <- G +
+      geom_line(data = data_maaiveld, aes(x = Datum, y = Maaiveld), col = color_maaiveld)
+
+  }
+  
+  
+  
+  
+  # If only one Meetpuntcode, remove the legend
+  if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+    G <- G + 
+      theme(legend.position = "none")
+  }
+  
+  G <- G +
+    labs(x = "") +
+    scale_y_continuous(limits = c(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+                                  max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE)),
+                       breaks = seq(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+                                    max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE),
+                                    by = 0.2),
+                       minor_breaks = waiver())
+  
+  # Add correct Y-axis label  
+  if (y_maaiveld) {
+    G <- G + 
+      labs(y = "peil (m t.o.v. maaiveld)", x = "") 
+  } else {
+    G <- G + 
+      labs(y = "Peil (mTAW)", x = "") 
+  }
+  
+  meetpunt <-  tijdreeks_peilverloop %>% 
+    distinct(MeetpuntCode) %>% 
+    pull()
+  
+  if (peilpuntcode) {
+    G <- G +
+      labs(title = meetpunt)
+  }
+  
+  droogval <- any(!is.na(tijdreeks_peilverloop$Label) & tijdreeks_peilverloop$Label == "x")
+  
+  
+  Onderschrift <- OnderschriftPeil(meetpunt, aangepaste_periode = aangepaste_periode,
+                                   periode_begin = periode_begin, periode_einde = periode_einde,
+                                   droogval, titel = titel_bijschrift)
+  
+  
+  return(list(Graf = G, Bijschrift = Onderschrift))
+}
+
+
+GrafiekPeilverloopGroep <- function(tijdreeks_peilverloop, 
+                               aangepaste_periode = FALSE,
+                               periode_begin = "01-01", periode_einde = "31-12",
+                               jaren = NULL, 
+                               # facet = FALSE,
+                               maaiveld = FALSE,
+                               watina_peilpuntinfo = watina_havens_peilpuntinfo,
+                               info_diepte = NULL,
+                               color_peil_ondiep = Kleur1, color_peil_diep = Kleur9,
+                               color_peil_midden = Kleur2,
+                               x_label_month = 6, 
+                               color_maaiveld = Kleur11,
+                               y_maaiveld = FALSE, label = TRUE,
+                               peilpuntcode = TRUE, 
+                               titel_bijschrift = "Peil") {
+  
+  # 8!!!!!!!!
+  ## niet afgwerkt? Toch voor wrap_
+  
+  
+  # get the timeseries in graphs for the differenct years. This function only creates the graphs. The data is from getPeilverloop() !
+  # Uses facet_wrap. It always statrts from the first month for each year so all the scales the x-axes are starting from te same (was quitte hard to figure this out).
+  # aangepaste_periode is FALSE
+  # periode_begin en einde enkel voor aangepaste periode zodat scale en label enkel die maanden weergeeft.
+  # maaiveld, only needed to get correct y-axis label.
+  # Jaar dient opgenomen te worden in GetPeilverloop() !
+  # label = TRUE, if water was below watertable for a certain observation, this observation gets a point-label in the graph.
+  
+  # if all years
+  jaar_label <- str_c(x_label_month, "month", sep = " ")
+  # Periode opbolling
+  if (!is.null(jaren)) {
+    if (!aangepaste_periode) {
+      tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+        filter(.data$HydrologischJaar %in% jaren)
+    } else {
+      tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+        filter(.data$Jaar %in% jaren)
+    }
+  }
+  
+  # if (facet) {
+  #   
+  #   if (aangepaste_periode) {
+  #     
+  #     G <- ggplot(data = tijdreeks_peilverloop) +
+  #       geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+  #       scale_color_manual(values = c(color_peil_historisch)) +
+  #       facet_row(~ Jaar, scales = "free_x") +
+  #       scale_x_date(
+  #         date_labels = "%b",
+  #         breaks = seq(as.Date(str_c("2020", "-" , periode_begin), format = "%Y-%d-%m"),
+  #                      as.Date(str_c("2021", "-", periode_einde), format = "%Y-%d-%m"),
+  #                      by = "2 months"),
+  #         limits = as.Date(c(
+  #           str_c("2020", "-", periode_begin), 
+  #           str_c("2020", "-", periode_einde)), format = "%Y-%d-%m"),
+  #         date_minor_breaks = "1 month")
+  #     
+  #   } else {
+  #     # Hydrologisch jaar
+  #     ## Hier moet periode ook van 2019 en 2020 zijn zoals berekend in GetPeilverloop().
+  #     ## Dit omdat de labels niet deftig geplaats kunnen worden gezien als je 1 jaar neemt (bvb 2020), gaat R automatisch uit van een logische volgorde.
+  #     ## Dus maart na april lukt niet gezien onlogisch. De stalen van april tot decemebr zijn in 2019 (geen schrikeljaar), 
+  #     ## en januari tot maart in 2020 (wel schrikeljaar zodat een observatie op 29/02 wel mogelijk is.)
+  #     
+  #     G <- ggplot(data = tijdreeks_peilverloop) +
+  #       geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+  #       scale_color_manual(values = c(color_peil_historisch)) +
+  #       facet_row(~ HydrologischJaar, scales = "free_x") +
+  #       scale_x_date(
+  #         date_labels = "%b",
+  #         breaks = seq(as.Date(str_c("2019", "-" , "01-04"), format = "%Y-%d-%m"),
+  #                      as.Date(str_c("2020", "-", "31-12"), format = "%Y-%d-%m"),
+  #                      by = "2 month"),
+  #         limits = c(as.Date(str_c(2019, "-", "04", "-01")), as.Date(str_c(2020, "-", "03-31"))),
+  #         date_minor_breaks = "1 month")
+  #   }
+  #   
+  #   # Add point label if observation is NA due below watertable.
+  #   if (label) {
+  #     G <- G +
+  #       geom_label(aes(label = Label, x = Periode, y = min(PeilmetingTAW, na.rm = TRUE)),
+  #                  fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+  #   }
+  #   # Geen facet
+  # } else {
+    
+  G <- ggplot() +
+    geom_line(data = tijdreeks_peilverloop, aes(x = PeilmetingDatum, y = PeilmetingTAW,
+                                                col = MeetpuntCode))
+
+  if (!is.null(info_diepte)) {
+    
+    gegevens_diepte <- info_diepte %>% 
+      mutate(Kleur = case_when(
+        Diepte == min(Diepte) ~ color_peil_ondiep,
+        Diepte == max(Diepte) ~ color_peil_diep,
+        TRUE ~ color_peil_midden
+        )) %>% 
+      arrange(MeetpuntCode)
+    
+    # Hier worden de kleuren toegekend
+    variables <- gegevens_diepte %>% 
+      pull(MeetpuntCode)
+    
+    colors_variables <- gegevens_diepte %>% 
+      pull(Kleur)
+    
+    G <- G +
+      scale_color_manual(values = colors_variables, breaks = variables, labels = variables)
+  }
+  
+  
+  if (aangepaste_periode) {
+    G <- G +
+      scale_x_date(date_labels = "%m-%Y", 
+                   limits = c(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+                              as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m")),
+                   breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+                                as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m"),
+                                by = jaar_label),
+                   date_minor_breaks =  "1 month")
+  } else {
+    
+    G <- G +
+      scale_x_date(date_labels = "%m-%Y", 
+                   limits = c(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+                              as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+                                            + 1
+                                            , "-", "01-04"), format = "%Y-%d-%m")),
+                   breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+                                as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+                                              + 1
+                                              , "-", "01-04"), format = "%Y-%d-%m"),
+                                by = jaar_label),
+                   date_minor_breaks =  "1 month")
+    
+  }
+  
+  if (label) {
+    G <- G +
+      geom_label(data = tijdreeks_peilverloop, aes(label = Label, x = PeilmetingDatum, y = min(PeilmetingTAW, na.rm = TRUE) + 0.01),
+                 fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+  }
+  # }
+  
+  if (maaiveld) {
+    
+    code <- tijdreeks_peilverloop %>% 
+      distinct(MeetpuntCode) %>% 
+      pull()
+    
+    info_peil <- watina_peilpuntinfo %>% 
+      filter(MeetpuntCode %in% code)
+    
+    if (y_maaiveld) {
+      data_maaiveld <- info_peil %>% 
+        dplyr::select(MeetpuntCode, PeilpuntCode, "Maaiveld" = PeilpuntHoogteBovenMaaiveld,  PeilpuntStartdatum, PeilpuntEinddatum)
+    } else {
+      data_maaiveld <- info_peil %>% 
+        dplyr::select(MeetpuntCode, PeilpuntCode, "Maaiveld" = PeilpuntTAWMaaiveld,  PeilpuntStartdatum, PeilpuntEinddatum)
+    }
+    
+    data_maaiveld <- data_maaiveld %>%
+      pivot_longer(cols = c(PeilpuntStartdatum, PeilpuntEinddatum),
+                   names_to = "Chronologie", values_to = "Datum") %>%
+      # Vervang NA door start/eind van tijdreeks
+      mutate(Datum = case_when(
+        is.na(Datum) & Chronologie == "PeilpuntStartdatum" ~ min(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE),
+        is.na(Datum) & Chronologie == "PeilpuntEinddatum"  ~ max(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE),
+        TRUE ~ Datum
+      )) %>%
+      # ✂ Afkappen aan grenzen
+      mutate(Datum = case_when(
+        Chronologie == "PeilpuntStartdatum" ~ pmax(Datum, min(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE)),
+        Chronologie == "PeilpuntEinddatum"  ~ pmin(Datum, max(tijdreeks_peilverloop$PeilmetingDatum, na.rm = TRUE)),
+        TRUE ~ Datum
+      )) %>%
+      
+      # Combineer start/eind per maaiveld — nog steeds in LANG formaat
+      group_by(MeetpuntCode, PeilpuntCode, Maaiveld) %>%
+      summarise(
+        StartDatum = min(Datum[Chronologie == "PeilpuntStartdatum"]),
+        EindDatum  = max(Datum[Chronologie == "PeilpuntEinddatum"]),
+        .groups = "drop"
+      ) %>%
+      filter(StartDatum <= EindDatum) %>% 
+      pivot_longer(cols = c(StartDatum, EindDatum),
+                   names_to = "Chronologie", values_to = "Datum")
+    
+    
+    G <- G +
+      geom_line(data = data_maaiveld, aes(x = Datum, y = Maaiveld), col = color_maaiveld)
+    
+  }
+  
+  
+  
+  
+  # If only one Meetpuntcode, remove the legend
+  if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+    G <- G + 
+      theme(legend.position = "none")
+  }
+  
+  G <- G +
+    labs(x = "") +
+    scale_y_continuous(limits = c(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+                                  max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE)),
+                       breaks = seq(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+                                    max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE),
+                                    by = 0.2),
+                       minor_breaks = waiver())
+  
+  # Add correct Y-axis label  
+  if (y_maaiveld) {
+    G <- G + 
+      labs(y = "peil (m t.o.v. maaiveld)", x = "") 
+  } else {
+    G <- G + 
+      labs(y = "Peil (mTAW)", x = "") 
+  }
+  
+  meetpunt <-  tijdreeks_peilverloop %>% 
+    distinct(MeetpuntCode) %>% 
+    pull()
+  
+  if (peilpuntcode) {
+    G <- G +
+      labs(title = meetpunt)
+  }
+  
+  droogval <- any(!is.na(tijdreeks_peilverloop$Label) & tijdreeks_peilverloop$Label == "x")
+  
+  
+  Onderschrift <- OnderschriftPeil(meetpunt, aangepaste_periode = aangepaste_periode,
+                                   periode_begin = periode_begin, periode_einde = periode_einde,
+                                   droogval, titel = titel_bijschrift)
+  
+  
+  return(list(Graf = G, Bijschrift = Onderschrift))
+}
+# GrafiekPeilverloop <- function(tijdreeks_peilverloop, 
+#                                aangepaste_periode = FALSE,
+#                                periode_begin = "01-01", periode_einde = "31-12",
+#                                jaren = NULL, facet = FALSE,
+#                                y_maaiveld = FALSE, label = TRUE,
+#                                titel = "Peil") {
+#   # get the timeseries in graphs for the differenct years. This function only creates the graphs. The data is from getPeilverloop() !
+#   # Uses facet_wrap. It always statrts from the first month for each year so all the scales the x-axes are starting from te same (was quitte hard to figure this out).
+#   # aangepaste_periode is FALSE
+#   # periode_begin en einde enkel voor aangepaste periode zodat scale en label enkel die maanden weergeeft.
+#   # maaiveld, only needed to get correct y-axis label.
+#   # Jaar dient opgenomen te worden in GetPeilverloop() !
+#   # label = TRUE, if water was below watertable for a certain observation, this observation gets a point-label in the graph.
+#   
+#   # if all years
+#   jaar_label <- "6 month"
+#   # Periode opbolling
+#   if (!is.null(jaren)) {
+#     jaar_label <- "2 month"
+#     if (!aangepaste_periode) {
+#       tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+#         filter(.data$HydrologischJaar %in% jaren)
+#     } else {
+#       tijdreeks_peilverloop <- tijdreeks_peilverloop %>% 
+#         filter(.data$Jaar %in% jaren)
+#     }
+#   }
+#   
+#   if (facet) {
+#     
+#     if (aangepaste_periode) {
+#       
+#       G <- ggplot(data = tijdreeks_peilverloop) +
+#         geom_line(aes(x = Periode, y = PeilmetingTAW,  col  = MeetpuntCode)) +
+#         facet_row(~ Jaar, scales = "free_x") +
+#         scale_x_date(
+#           date_labels = "%b",
+#           breaks = seq(as.Date(str_c("2020", "-" , periode_begin), format = "%Y-%d-%m"),
+#                        as.Date(str_c("2021", "-", periode_einde), format = "%Y-%d-%m"),
+#                        by = "2 months"),
+#           limits = as.Date(c(
+#             str_c("2020", "-", periode_begin), 
+#             str_c("2020", "-", periode_einde)), format = "%Y-%d-%m"),
+#           date_minor_breaks = "1 month")
+#       
+#     } else {
+#       # Hydrologisch jaar
+#       ## Hier moet periode ook van 2019 en 2020 zijn zoals berekend in GetPeilverloop().
+#       ## Dit omdat de labels niet deftig geplaats kunnen worden gezien als je 1 jaar neemt (bvb 2020), gaat R automatisch uit van een logische volgorde.
+#       ## Dus maart na april lukt niet gezien onlogisch. De stalen van april tot decemebr zijn in 2019 (geen schrikeljaar), 
+#       ## en januari tot maart in 2020 (wel schrikeljaar zodat een observatie op 29/02 wel mogelijk is.)
+#       
+#       G <- ggplot(data = tijdreeks_peilverloop) +
+#         geom_line(aes(x = Periode, y = PeilmetingTAW, col = MeetpuntCode)) +
+#         facet_row(~ HydrologischJaar, scales = "free_x") +
+#         scale_x_date(
+#           date_labels = "%b",
+#           breaks = seq(as.Date(str_c("2019", "-" , "01-04"), format = "%Y-%d-%m"),
+#                        as.Date(str_c("2020", "-", "31-12"), format = "%Y-%d-%m"),
+#                        by = "2 month"),
+#           limits = c(as.Date(str_c(2019, "-", "04", "-01")), as.Date(str_c(2020, "-", "03-31"))),
+#           date_minor_breaks = "1 month")
+#     }
+#     
+#     # Add point label if observation is NA due below watertable.
+#     if (label) {
+#       G <- G +
+#         geom_label(aes(label = Label, x = Periode, y = min(PeilmetingTAW, na.rm = TRUE)),
+#                    fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+#     }
+#     # Geen facet
+#   } else {
+#     
+#     #Geef het laatste jaar een andere kleur. 
+#     if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+#       laatste_jaar <- if_else(aangepaste_periode, max(tijdreeks_peilverloop$Jaar), max(tijdreeks_peilverloop$HydrologischJaar))
+#       tijdreeks_peilverloop_historisch <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+#           filter(Jaar != laatste_jaar)} else {tijdreeks_peilverloop %>% 
+#               filter(HydrologischJaar != laatste_jaar)}
+#       tijdreeks_peilverloop_recent <- if(aangepaste_periode) {tijdreeks_peilverloop %>% 
+#           filter(Jaar == laatste_jaar)} else {tijdreeks_peilverloop %>% 
+#               filter(HydrologischJaar == laatste_jaar)}
+#       
+#       G <- ggplot() +
+#         geom_line(data = tijdreeks_peilverloop_historisch, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = inbo_donkerblauw) +
+#         geom_line(data = tijdreeks_peilverloop_recent, aes(x = PeilmetingDatum, y = PeilmetingTAW), col = inbo_felrood)
+#     } else {
+#       
+#       G <- ggplot() +
+#         geom_line(data = tijdreeks_peilverloop, aes(x = PeilmetingDatum, y = PeilmetingTAW,
+#                                                     col = MeetpuntCode))
+#     }
+#     
+#     if (aangepaste_periode) {
+#       G <- G +
+#         scale_x_date(date_labels = "%m-%Y", 
+#                      limits = c(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+#                                 as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m")),
+#                      breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$Jaar), "-" , periode_begin), format = "%Y-%d-%m"),
+#                                   as.Date(str_c(max(tijdreeks_peilverloop$Jaar) + 1, "-", periode_begin), format = "%Y-%d-%m"),
+#                                   by = jaar_label),
+#                      date_minor_breaks =  "1 month")
+#     } else {
+#       
+#       G <- G +
+#         scale_x_date(date_labels = "%m-%Y", 
+#                      limits = c(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+#                                 as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+#                                               + 1
+#                                               , "-", "01-04"), format = "%Y-%d-%m")),
+#                      breaks = seq(as.Date(str_c(min(tijdreeks_peilverloop$HydrologischJaar), "-" , "01-04"), format = "%Y-%d-%m"),
+#                                   as.Date(str_c(max(tijdreeks_peilverloop$HydrologischJaar) 
+#                                                 + 1
+#                                                 , "-", "01-04"), format = "%Y-%d-%m"),
+#                                   by = jaar_label),
+#                      date_minor_breaks =  "1 month")
+#       
+#     }
+#     
+#     if (label) {
+#       G <- G +
+#         geom_label(data = tijdreeks_peilverloop, aes(label = Label, x = PeilmetingDatum, y = min(PeilmetingTAW, na.rm = TRUE) + 0.01),
+#                    fill = 'transparent', color = label_kleur, show.legend = FALSE, label.size = 0)
+#     }
+#   }
+#   
+#   # If only one Meetpuntcode, remove the legend
+#   if (length(unique(tijdreeks_peilverloop$MeetpuntCode)) == 1) {
+#     G <- G + 
+#       theme(legend.position = "none")
+#   }
+#   
+#   G <- G +
+#     labs(x = "") +
+#     scale_y_continuous(limits = c(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+#                                   max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE)),
+#                        breaks = seq(min(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, floor), na.rm = TRUE),
+#                                     max(RoundAny(tijdreeks_peilverloop$PeilmetingTAW, 0.1, ceiling), na.rm = TRUE),
+#                                     by = 0.2),
+#                        minor_breaks = waiver())
+#   
+#   # Add correct Y-axis label  
+#   if (y_maaiveld) {
+#     G <- G + 
+#       labs(y = "peil (m t.o.v. maaiveld)", x = "") 
+#   } else {
+#     G <- G + 
+#       labs(y = "Peil (mTAW)", x = "") 
+#     
+#   }
+#   
+#   meetpunt <-  tijdreeks_peilverloop %>% distinct(MeetpuntCode) %>% pull()
+#   droogval <- any(!is.na(tijdreeks_peilverloop$Label) & tijdreeks_peilverloop$Label == "x")
+#   
+#   
+#   Onderschrift <- OnderschriftPeil(meetpunt, aangepaste_periode = aangepaste_periode,
+#                                    periode_begin = periode_begin, periode_einde = periode_einde,
+#                                    droogval, titel = titel)
+#   
+#   
+#   return(list(Graf = G, Bijschrift = Onderschrift))
+# }
+
+# Kreekpeil in periode die je gebruikt in de periode die niet boven schothoogte komt. In DPN: 2m75 mTAW, 
+# in Putten Weiden op 1.20 mTAW , Putten west is 1m80 mTAW
+# Groot Rietveld -> Geen rekening mee houden.
+
+
+GrafiekNeerslagoverschot <- function(neerslagoverschot_df, periode_begin = "01-04", periode_zomermin = "01-08") {
+  
+  # Behoud enkel neerslagoverschot kleiner of gelijk aan 0.
+  data_subset <- subset(neerslagoverschot_df, Neerslagoverschot  <= 0)                              
+  
+  G <- ggplot()
+  
+  if (nrow(data_subset) != 0) {
+    
+    G <- ggplot(data = data_subset, aes(Neerslagoverschot , Delta)) +
+      geom_point(size = 3, color = "blue") + 
+      geom_smooth(method = "lm", formula = "y ~ x") +
+      labs(x = "Neerslag overschot (mm)", y = "Peildaling (m)") +
+      scale_x_continuous(breaks = seq(RoundAny(min(data_subset$Neerslagoverschot), 10, floor),
+                                      RoundAny(max(data_subset$Neerslagoverschot), 10, ceiling),
+                                      by = 20)) +
+      scale_y_continuous(breaks = seq(RoundAny(min(data_subset$Delta), 0.1, floor),
+                                      RoundAny(max(data_subset$Delta), 0.1, ceiling),
+                                      by = 0.1))
+  }
+  
+  Onderschrift <- str_c("Neerslagoverschot in functie van peildaling. De peildaling is het verschil tussen de de maximale waarde tussen ", 
+                        GetDatum(periode_begin), " en 1 juni, en de minimale waarde rond ", GetDatum(periode_zomermin), 
+                        ". Jaren met droogval werden niet opgenomen.")
+  
+  
+  return(list(Graf = G, Bijschrift = Onderschrift))
+}
+
+
+
 GrafiekPeilverloopSimple <- function(Peilreeks,
                                      maaiveld_min = NULL,
                                      maaiveld_nul = TRUE,
@@ -2417,7 +3288,7 @@ GrafiekPeilverloopSimple <- function(Peilreeks,
   G <- ggplot(data = Peilreeks_maaiveld) +
     geom_line(aes(x = PeilmetingDatum, y = PeilmetingTAW,  col  = MeetpuntCode), linewidth = 1) +
     #Add minimul maaiveld if it isnt NULL
-    {if(!is.null(maaiveld_min)) {
+    {if (!is.null(maaiveld_min)) {
       geom_line(aes(x = PeilmetingDatum, y = 0), col = "black", linewidth = 1.2)
     }
     } +
