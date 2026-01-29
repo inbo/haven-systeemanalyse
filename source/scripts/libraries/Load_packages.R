@@ -2,8 +2,9 @@
 #Add new packages here if necessary. The code will check and download new ones and load everything.
 # Install the packages 
 allPackages <- c(
+  
   # General
-  "DBI", "conflicted", "units",
+  "DBI", "conflicted", "units", "checklist",
   # INBO-packages
   "watina", "inbodb", "inbolims", "INBOtheme", 
   # Data wrangling
@@ -56,4 +57,6 @@ CreatePath <- function(path, subfolder) {
   }
   return(new_path)
 }
-
+check_spelling()
+check_filename()
+check_lintr()
