@@ -3,18 +3,19 @@
 # The code will download new ones and load everything.
 all_packages <- c(
                   # General
-  "DBI", "conflicted", "units", "checklist",
-  # INBO-packages
-  "watina", "inbodb", "inbolims", "INBOtheme",
-  # Data wrangling
-  "tidyverse", "glue", "lubridate", "santoku",
-  # Spatial data
-  "sf", "terra",
-  # Visualization
-  "ggforce", "patchwork", "tidyterra", "ggspatial", "ggnewscale",
-  "ggsflabel", "maptiles", "scales",
-  # external
-  "writexl", "readxl", "officer", "flextable")
+                  "DBI", "conflicted", "units", "checklist",
+                  # INBO-packages
+                  "watina", "inbodb", "inbolims", "INBOtheme",
+                  # Data wrangling
+                  "tidyverse", "glue", "lubridate", "santoku",
+                  # Spatial data
+                  "sf", "terra",
+                  # Visualization
+                  "ggforce", "patchwork", "tidyterra", "ggspatial",
+                  "ggnewscale",
+                  "ggsflabel", "maptiles", "scales",
+                  # external
+                  "writexl", "readxl", "officer", "flextable")
 
 for (package in all_packages) {
   if (!require(package, character.only = TRUE)) {
