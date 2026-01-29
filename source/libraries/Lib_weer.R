@@ -10,8 +10,7 @@ opmaak_graf <- function(graf, grid = TRUE, x_jaar = FALSE) {
       theme(panel.grid = element_line(color = "grey90"))
   } else {
     graf <- graf +
-      theme(panel.grid = element_blank())
-  }
+      theme(panel.grid = element_blank()) }
   
   graf <- graf + 
     theme(axis.line = element_line(color = Kleur2)) +
@@ -23,76 +22,72 @@ opmaak_graf <- function(graf, grid = TRUE, x_jaar = FALSE) {
   if (x_jaar) {
     graf <- graf + 
       scale_x_continuous(breaks = c(2003,2005,2007,2009,2011,2013,2015,2017,2019))
-  }
+  }$
   return(graf)
 }
 
-
-klimaatsamenvattingPerDagISOWEEK <- function(data_weer, datum_start, datum_einde, NA_rm = TRUE) {
-  
-  
+klimaatsamenvatting_perdag_isoweek <- function(data_weer, datum_start, datum_einde, NA_rm = TRUE) {
   # Neem de volledige week mee waarin het start- als einddatum invalt.
-  # Dit zorgt ervoor dat de aantal halve maanden afwisselt per jaar. 
-  # Bereken Tmin, Tmax, Tgem, Wgem, Ntot per dag voor een opgegeven periode
+  # Dit zorgt ervoor dat de aantal halve maanden afwisselt per jaar.
+  # Bereken Tmin, Tmax, Tgem, Wgem, Ntot per dag voor een opgegeven periode.
   
-  start_datum <- datum_start %>% 
+  start_datum <- datum_start %>%
     as.Date(., format = "%d/%m/%Y")
   
-  einde_datum <- datum_einde %>% 
+  einde_datum <- datum_einde %>%
     as.Date(., format = "%d/%m/%Y")
   
   # Add weeks
-  data_weer_week <- data_weer %>% 
-    mutate(Week = isoweek(DatumTijd),
-           Datum = as_date(DatumTijd)) %>% 
+  data_weer_week <- data_weer %>%
+    mutate(Week = isoweek(.data$DatumTijd),
+           Datum = as_date(.data$DatumTijd)) %>%
     filter(
-      (Jaar ==  year(start_datum) & Week == isoweek(start_datum)) | 
-        (Jaar ==  year(einde_datum) & Week == isoweek(einde_datum))
+      (.data$Jaar ==  year(start_datum) & Week == isoweek(start_datum)) | 
+        (.data$Jaar ==  year(einde_datum) & Week == isoweek(einde_datum))
     ) %>% 
-    distinct(DatumTijd, Datum, Dag, Maand, Jaar)
+    distinct(.data$DatumTijd, .data$Datum, .data$Dag, .data$Maand, .data$Jaar)
   
   
   # Get the first date of the week wherein the startdate falls
-  datum_start_week <- data_weer_week %>% 
-    slice_min(DatumTijd, with_ties = FALSE) %>% 
-    mutate(DatumTijd = as.POSIXlt(str_c(str_c(Dag, Maand, Jaar, sep = "/"),"00:00:00"), 
-                                  format = "%d/%m/%Y %H:%M:%S", 
-                                  origin = "01/01/1970 00:00:00")) %>% 
-    pull(DatumTijd)
+  datum_start_week <- data_weer_week %>%
+    slice_min(.data$DatumTijd, with_ties = FALSE) %>%
+    mutate(DatumTijd = as.POSIXlt(str_c(str_c(Dag, Maand, Jaar, sep = "/"),"00:00:00"),
+                                  format = "%d/%m/%Y %H:%M:%S",
+                                  origin = "01/01/1970 00:00:00")) %>%
+    pull(.data$DatumTijd)
   
   # Get the first date of the week wherein the einddate falls
-  datum_einde_week <- data_weer_week %>% 
-    slice_max(DatumTijd, with_ties = FALSE) %>% 
-    mutate(DatumTijd = as.POSIXlt(str_c(str_c(Dag, Maand, Jaar, sep = "/"),"23:59:59"), 
-                                  format = "%d/%m/%Y %H:%M:%S", 
-                                  origin = "01/01/1970 00:00:00")) %>% 
+  datum_einde_week <- data_weer_week %>%
+    slice_max(.data$DatumTijd, with_ties = FALSE) %>%
+    mutate(DatumTijd = as.POSIXlt(str_c(str_c(.data$Dag, .data$Maand, .data$Jaar, sep = "/"),"23:59:59"),
+                                  format = "%d/%m/%Y %H:%M:%S",
+                                  origin = "01/01/1970 00:00:00")) %>%
     pull(DatumTijd)
   
-  
-  data_weer_subset <- data_weer %>% 
+  data_weer_subset <- data_weer %>%
     mutate(
-      DatumTijd = as.POSIXlt(DatumTijd, format = "%d/%m/%Y %H:%M", origin = "01/01/1970 00:00"),
-      Datum = as_date(DatumTijd),
-      Week = isoweek(DatumTijd)) %>%
-    filter((DatumTijd >= datum_start_week) & (DatumTijd <= datum_einde_week)) %>% 
-    group_by(Datum) %>% 
+      DatumTijd = as.POSIXlt(.data$DatumTijd, format = "%d/%m/%Y %H:%M", origin = "01/01/1970 00:00"),
+      Datum = as_date(.data$DatumTijd),
+      Week = isoweek(.data$DatumTijd)) %>%
+    filter((.data$DatumTijd >= datum_start_week) & (.data$DatumTijd <= datum_einde_week)) %>%
+    group_by(.data$Datum) %>%
     summarise(
-      Tmin = min(Temperatuur, na.rm = NA_rm),
-      Tmax = max(Temperatuur, na.rm = NA_rm),
-      Tgem = mean(Temperatuur, na.rm = NA_rm),
-      WSgem = mean(Windsnelheid, na.rm = NA_rm),
-      NStot = sum(Neerslag, na.rm = NA_rm),
-      .groups = "drop") %>% 
+      Tmin = min(.data$Temperatuur, na.rm = NA_rm),
+      Tmax = max(.data$Temperatuur, na.rm = NA_rm),
+      Tgem = mean(.data$Temperatuur, na.rm = NA_rm),
+      WSgem = mean(.data$Windsnelheid, na.rm = NA_rm),
+      NStot = sum(.data$Neerslag, na.rm = NA_rm),
+      .groups = "drop") %>%
     mutate(
-      Periode = as.POSIXct(Datum),
-      Jaar = year(Periode),
-      Maand = month(Periode),
-      Dag = mday(Periode),
+      Periode = as.POSIXct(.data$Datum),
+      Jaar = year(.data$Periode),
+      Maand = month(.data$Periode),
+      Dag = mday(.data$Periode),
       # maandag tot zondag
-      Week = isoweek(Periode)
-      ) %>% 
-    group_by(Jaar, Week) %>% 
-    mutate(Periode_week = cur_group_id()) %>% 
+      Week = isoweek(.data$Periode)
+      ) %>%
+    group_by(.data$Jaar, .data$Week) %>%
+    mutate(Periode_week = cur_group_id()) %>%
     ungroup()
   
   return(data_weer_subset)
